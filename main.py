@@ -3,7 +3,7 @@ from requests import Session
 import pandas as pd
 from api_functions import puxa, pay, read
 
-base = pd.read_excel(r"pagamentos.xlsx")
+# base = pd.read_excel(r"pagamentos.xlsx")
 base_csv = pd.read_csv(r"pagamentos.csv")
 
 cpf = base_csv["cpf"]
