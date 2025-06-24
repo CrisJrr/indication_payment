@@ -1,11 +1,16 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from functions.api_functions import *
+from functions.new_functions import *
+
+fb = Fatban()
 
 def upload_file():
     st.header("Indicações")
     st.write("Carregue o arquivo de indicações para processar os pagamentos.")
+    login = st.text_input(
+        "Digite seu login:"
+        , placeholder="Seu login aqui")
     uploaded_file = st.file_uploader("Escolha o arquivo", type=["xlsx"], label_visibility="collapsed")
 
     if uploaded_file is not None:
@@ -15,8 +20,8 @@ def upload_file():
         df["Nome"] = base_bruta["NOME COMPLETO"].astype(str)
         df["Valor"] = base_bruta["VALOR"].astype(int)
 
-
         st.session_state["df"] = df
+        st.session_state["login"] = login
         st.write("Resumo dos Pagamentos:")
         st.dataframe(df)
         return df
@@ -24,16 +29,15 @@ def upload_file():
 
 def on_click():
     df = st.session_state.get("df")
+    user = fb.get_user_id(st.session_state["login"])
     if df is not None:
         doc, valor, nome = df["CPF"], df["Valor"], df["Nome"]
         for c, v, n in zip(doc, valor, nome):
-            status = read(c, v, n)
-        
-        exibe_erros_streamlit()
+            status = fb.read(c, v, n, user)
 
 def indication_confirm():
     if "df" in st.session_state:
-    
+
         st.button("Confirmar Pagamentos", on_click=on_click)
 
     return None
