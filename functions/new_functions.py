@@ -155,7 +155,7 @@ class Fatban:
                 self.indication_id(id, cpf, commission_value, Session(), name, user)
 
     def indication_id(self, id, cpf, commission_value, session, name, user):
-        indication_url = self.pay + f"/CustomerIndication/CommissionDisbursedProposal"
+        indication_url = self.finpay + f"/CustomerIndication/CommissionDisbursedProposal"
         payload = [id]
         headers = {"Content-Type": "application/json"}
 
