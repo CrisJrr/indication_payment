@@ -152,7 +152,7 @@ class Fatban:
             for doc in results:
                 id = str(doc.get("_id"))
                 cpf = doc.get("document_number")
-                self.indication_id(id, cpf, commission_value, Session(), name)
+                self.indication_id(id, cpf, commission_value, Session(), name, user)
 
     def indication_id(self, id, cpf, commission_value, session, name, user):
         indication_url = self.pay + f"/CustomerIndication/CommissionDisbursedProposal"
