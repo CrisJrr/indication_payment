@@ -120,7 +120,7 @@ class Fatban:
             print(f"Erro ao pagar o CPF {cpf}.")
             self.insert(user, cpf, name, commission_value, "Não Pago", "Erro ao pagar cliente")
 
-    def read(self, cpf, commission_value, name, user):
+    def read(self, cpf, commission_value, name, user, pay_data):
         with Session() as session:
             result = self.puxa(cpf, session)
             if result:
@@ -128,9 +128,9 @@ class Fatban:
                 if commission_value == payment_amount:
                     self.pay(doc, session, commission_value, name, user)
                 else:
-                    self.mongo_search(doc, commission_value, name, user)
+                    self.mongo_search(doc, commission_value, name, user, pay_data)
 
-    def mongo_search(self, document_number, commission_value, name, user):
+    def mongo_search(self, document_number, commission_value, name, user, pay_data):
 
         mongo_finanto = "mongodb://eliton:Sudoku-%2B123@34.31.254.251:27018,34.31.254.251:27017,34.31.254.251:27019,34.31.254.251:27020,ps1ip1.ath.cx:27021/db_app?retryWrites=false&replicaSet=rs0&readPreference=secondaryPreferred&serverSelectionTimeoutMS=5000&connectTimeoutMS=10000&authSource=admin&authMechanism=SCRAM-SHA-256"
         finanto_client = MongoClient(mongo_finanto, uuidRepresentation="standard")
@@ -140,7 +140,10 @@ class Fatban:
         filtro = {
             "document_number": f"{document_number}",
             "commission_value": float(commission_value),
-            "status_description": "Proposta Paga"
+            "status_description": "Proposta Paga",
+            "event_datetime": {
+                "$lt": f"{pay_data}T00:00:00.000+0000"
+            }
         }
 
         results = db_finanto_pay.find(filtro).sort("event_datetime", 1).limit(1)

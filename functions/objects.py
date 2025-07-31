@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from functions.new_functions import *
 
 fb = Fatban()
@@ -14,6 +13,10 @@ def upload_file():
     uploaded_file = st.file_uploader("Escolha o arquivo", type=["xlsx"], label_visibility="collapsed")
 
     if uploaded_file is not None:
+        pay_data = re.match(r"^([^_]+)", uploaded_file.name).group(1).strip()
+        pay_data = re.sub(r"\.", "-", pay_data)
+        pay_data = datetime.strptime(pay_data, '%d-%m-%Y').strftime('%Y-%m-%d')
+
         base_bruta = pd.read_excel(uploaded_file, header=3)
         df = pd.DataFrame()
         df["CPF"] = base_bruta["CPF/CNPJ"].astype(str).str.rjust(11, '0')
@@ -22,18 +25,23 @@ def upload_file():
 
         st.session_state["df"] = df
         st.session_state["login"] = login
+        st.session_state["pay_data"] = pay_data
         st.write("Resumo dos Pagamentos:")
         st.dataframe(df)
-        return df
+
+        return df, pay_data
     return None
 
-def on_click():
+def on_click(user):
     df = st.session_state.get("df")
-    user = fb.get_user_id(st.session_state["login"])
+    pay_data = st.session_state.get("pay_data")
+
+    user = st.session_state.get["login"]
+
     if df is not None:
         doc, valor, nome = df["CPF"], df["Valor"], df["Nome"]
         for c, v, n in zip(doc, valor, nome):
-            status = fb.read(c, v, n, user)
+            status = fb.read(c, v, n, user, pay_data)
 
 def indication_confirm():
     if "df" in st.session_state:
