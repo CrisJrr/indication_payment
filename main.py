@@ -2,7 +2,6 @@ import pandas as pd
 from functions.api_functions import puxa, pay, read
 import os
 
-
 def listar_arquivos_xlsx(pasta_raiz):
     arquivos_xlsx = None
 
@@ -15,7 +14,7 @@ def listar_arquivos_xlsx(pasta_raiz):
     return arquivos_xlsx
 
 path = listar_arquivos_xlsx("/home/crisbrandt/Documentos/github/cris/indication/indication_payment/")
- 
+
 base = pd.read_excel(path, header=3)
 
 cpf = base["CPF/CNPJ"]
@@ -27,7 +26,6 @@ for c, v in zip(cpf, valor):
         doc, payment = read(c, v, "Manual")
     except:
         pass
-
 
 # if __name__ == "__main__":
 # rodar_pagamentos_automaticamente()

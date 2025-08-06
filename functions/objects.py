@@ -13,9 +13,15 @@ def upload_file():
     uploaded_file = st.file_uploader("Escolha o arquivo", type=["xlsx"], label_visibility="collapsed")
 
     if uploaded_file is not None:
-        pay_data = re.match(r"^([^_]+)", uploaded_file.name).group(1).strip()
-        pay_data = re.sub(r"\.", "-", pay_data)
-        pay_data = datetime.strptime(pay_data, '%d-%m-%Y').strftime('%Y-%m-%d')
+        # pay_data = re.match(r"^(\d{2}\.\d{2}\.\d{4})", uploaded_file.name)
+        # pay_data = re.sub(r"\.", "-", pay_data)
+        # pay_data = datetime.strptime(pay_data, '%d-%m-%Y').strftime('%Y-%m-%d')
+
+        match = re.match(r"^(\d{2}\.\d{2}\.\d{4})", uploaded_file.name)
+        if match:
+            pay_data = match.group(1)  # extrai a string da data
+            pay_data = re.sub(r"\.", "-", pay_data)  # agora sim: substitui os pontos por hífens
+            pay_data = datetime.strptime(pay_data, '%d-%m-%Y').strftime('%Y-%m-%d')
 
         base_bruta = pd.read_excel(uploaded_file, header=3)
         df = pd.DataFrame()
