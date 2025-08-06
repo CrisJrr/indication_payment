@@ -4,12 +4,23 @@ from functions.new_functions import *
 
 fb = Fatban()
 
+
+def salvar_login():
+    """
+    Pega o valor do campo de texto com a chave 'login_input' 
+    e o armazena em st.session_state['login'].
+    """
+    st.session_state["login"] = st.session_state["login_input"]
+
 def upload_file():
     st.header("Indicações")
     st.write("Carregue o arquivo de indicações para processar os pagamentos.")
-    login = st.text_input(
-        "Digite seu login:"
-        , placeholder="Seu login aqui")
+    st.text_input(
+        "Digite seu login:",
+        placeholder="Seu login aqui",
+        key="login_input",  # Chave única para este widget
+        on_change=salvar_login # Função a ser chamada na mudança
+    )
     uploaded_file = st.file_uploader("Escolha o arquivo", type=["xlsx"], label_visibility="collapsed")
 
     if uploaded_file is not None:
@@ -30,7 +41,6 @@ def upload_file():
         df["Valor"] = base_bruta["VALOR"].astype(int)
 
         st.session_state["df"] = df
-        st.session_state["login"] = login
         st.session_state["pay_data"] = pay_data
         st.write("Resumo dos Pagamentos:")
         st.dataframe(df)
@@ -38,11 +48,11 @@ def upload_file():
         return df, pay_data
     return None
 
-def on_click(user):
+def on_click():
     df = st.session_state.get("df")
     pay_data = st.session_state.get("pay_data")
 
-    user = st.session_state.get["login"]
+    user = st.session_state.get("login")
 
     if df is not None:
         doc, valor, nome = df["CPF"], df["Valor"], df["Nome"]
