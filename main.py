@@ -1,5 +1,5 @@
 import pandas as pd
-from functions.api_functions import puxa, pay, read
+from functions.new_functions import puxa, pay, read
 import os
 
 def listar_arquivos_xlsx(pasta_raiz):
@@ -19,13 +19,14 @@ base = pd.read_excel(path, header=3)
 
 cpf = base["CPF/CNPJ"]
 valor = base["VALOR"]
+docs_pagos = []
 
 for c, v in zip(cpf, valor):
     try:
         c = str(c).rjust(11, '0')
         doc, payment = read(c, v, "Manual")
+        docs_pagos.append(doc)
     except:
         pass
 
-# if __name__ == "__main__":
-# rodar_pagamentos_automaticamente()
+print(docs_pagos)

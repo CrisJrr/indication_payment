@@ -10,6 +10,8 @@ import pandas as pd
 import time
 from pymongo import MongoClient
 import re
+import itertools
+from bson.binary import Binary
 
 class Fatban:
     def __init__(self):
@@ -21,7 +23,9 @@ class Fatban:
         self.finpay = os.getenv("PAY_ENDPOINT")
         self.aws_link = os.getenv("AWS_LINK")
         self.auth_endpoint = os.getenv("AUTH_FATBAN_ENDPOINT")
-        self.mongo = os.getenv("MONGO_URI")
+        self.mongo_cris = os.getenv("MONGO_CRIS")
+        self.mongo_qa = os.getenv("MONGO_QA")
+        self.mongo_prod = os.getenv("MONGO_PROD")
         self.token = self.login_fatban()
 
     def login_fatban(self) -> str | None:
@@ -88,7 +92,7 @@ class Fatban:
         
     def insert(self, user, doc, name, commission_value, status, description):
 
-        uri = MongoClient(self.mongo)
+        uri = MongoClient(self.mongo_cris)
         db_ind = uri["finanto_indication"]
         indication_collection = db_ind["indication_payment"]
 
@@ -107,66 +111,151 @@ class Fatban:
             }
             )
 
-        print(f"Documento criado para o CPF: {doc}")
+        print(f"[INSERT]Documento criado para o CPF: {doc}\n")
 
     def pay(self, cpf, session, commission_value, name, user):
         cpf = cpf.rjust(11, "0")
         pay_url = self.finpay + f"/CustomerIndication/CommissionDisbursedToClient?documentNumber={cpf}"
         response = session.put(pay_url, timeout=120)
         if response.status_code == 200:
-            print(f"CPF {cpf} pago\n")
+            print(f"[PAY]CPF {cpf} pago\n")
             self.insert(user, cpf, name, commission_value, "Pago", "Cliente pago")
+            return []
         else:
-            print(f"Erro ao pagar o CPF {cpf}.")
+            print(f"[PAY]Erro ao pagar o CPF {cpf}.")
             self.insert(user, cpf, name, commission_value, "Não Pago", "Erro ao pagar cliente")
+            error_details = [{"CPF": cpf, "ID com Erro": "N/A - Pagamento Direto"}]
+
+            return error_details
 
     def read(self, cpf, commission_value, name, user, pay_data):
-        with Session() as session:
-            result = self.puxa(cpf, session)
-            if result:
+        try:
+            with Session() as session:
+                result = self.puxa(cpf, session)
+
+                if not result:
+                    return [{
+                        "CPF": cpf, "Nome": name, "Valor": commission_value,
+                        "Motivo da Falha": "CPF não encontrado na consulta inicial (API Puxa)."
+                    }]
+
                 doc, payment_amount, data = result
+
                 if commission_value == payment_amount:
-                    self.pay(doc, session, commission_value, name, user)
+                    return self.pay(doc, session, commission_value, name, user)
+
                 else:
-                    self.mongo_search(doc, commission_value, name, user, pay_data)
+                    return self.mongo_search(doc, commission_value, name, user, pay_data)
+
+        except Exception as e:
+            print(f"[ERRO GERAL] Um erro inesperado ocorreu ao processar o CPF {cpf}: {e}")
+            return [{
+                "CPF": cpf, "Nome": name, "Valor": commission_value,
+                "Motivo da Falha": f"Erro inesperado durante o processamento: {e}"
+            }]
 
     def mongo_search(self, document_number, commission_value, name, user, pay_data):
-
-        mongo_finanto = "mongodb://eliton:Sudoku-%2B123@34.31.254.251:27018,34.31.254.251:27017,34.31.254.251:27019,34.31.254.251:27020,ps1ip1.ath.cx:27021/db_app?retryWrites=false&replicaSet=rs0&readPreference=secondaryPreferred&serverSelectionTimeoutMS=5000&connectTimeoutMS=10000&authSource=admin&authMechanism=SCRAM-SHA-256"
-        finanto_client = MongoClient(mongo_finanto, uuidRepresentation="standard")
+        
+        finanto_client = MongoClient(self.mongo_prod)
         db_app = finanto_client["db_finanto_pay"]
         db_finanto_pay = db_app["customer_indication"]
 
         filtro = {
             "document_number": f"{document_number}",
-            "commission_value": float(commission_value),
             "status_description": "Proposta Paga",
             "event_datetime": {
                 "$lt": f"{pay_data}T00:00:00.000+0000"
             }
         }
 
-        results = db_finanto_pay.find(filtro).sort("event_datetime", 1).limit(1)
+        results = list(db_finanto_pay.find(filtro).sort("event_datetime", 1))
 
-        if db_finanto_pay.count_documents(filtro) == 0:
-            print(f"Nenhum documento encontrado para o CPF {document_number} com o commission_value de comissão {commission_value}.")
+        if not results:
+            print(f"[MONGO]Nenhum documento encontrado para o CPF {document_number}.")
             self.insert(user, document_number, name, commission_value, "Não Pago", "Nenhum documento encontrado")
-        else:
-            for doc in results:
-                id = str(doc.get("_id"))
-                cpf = doc.get("document_number")
-                self.indication_id(id, cpf, commission_value, Session(), name, user)
+            return [{"CPF": document_number, "Nome": name, "Valor": commission_value, "Motivo da Falha": "Nenhum documento de indicação paga encontrado no MongoDB."}]
+ 
+        comiss_total = round(float(commission_value), 2)
+        docs_to_pay = None
 
-    def indication_id(self, id, cpf, commission_value, session, name, user):
+        for i in range(1, len(results) +1):
+            for combo in itertools.combinations(results, i):
+                current_sum = sum(round(doc.get("commission_value", 0), 2) for doc in combo)
+                if current_sum == comiss_total:
+                    docs_to_pay = list(combo)
+                    break
+            if docs_to_pay:
+                break
+        
+        if docs_to_pay:
+            ids_to_pay = []
+            for doc in docs_to_pay:
+                doc_id = doc.get("_id")
+                if isinstance(doc_id, Binary):
+                    ids_to_pay.append(str(uuid.UUID(bytes=doc_id)))
+                else:
+                    ids_to_pay.append(str(doc_id))
+            
+            cpf = docs_to_pay[0].get("document_number")
+            return self.indication_id(ids_to_pay, cpf, commission_value, Session(), name, user)
+        else:
+            total_found = sum(doc.get("commission_value", 0) for doc in results)
+            print(f"[MONGO] Nenhuma combinação de documentos resultou no valor esperado de R${comiss_total} para o CPF {document_number}. Valor total encontrado: R${total_found}")
+            self.insert(user, document_number, name, commission_value, "Não Pago", "Valor de comissão divergente (nenhuma combinação encontrada)")
+            error_reason = f"Nenhuma combinação somou R${comiss_total}. (Valor total pendente: R${total_found})"
+            return [{"CPF": document_number, "Nome": name, "Valor": commission_value, "Motivo da Falha": error_reason}]
+
+    def indication_id(self, ids, cpf, commission_value, session, name, user):
         indication_url = self.finpay + f"/CustomerIndication/CommissionDisbursedProposal"
-        payload = [id]
         headers = {"Content-Type": "application/json"}
 
-        response = session.put(indication_url, json=payload, headers=headers, timeout=120)
-        print(response)
-        if response.status_code == 200:
-            self.insert(user, cpf, name, commission_value, "Pago", "Pago via ID")
-            print(f"Indicação {id} paga!")
+        succes_ids = []
+        failed_ids = {}
+        report_data_failed = []
+
+        for id in ids:
+            try:
+                payload = [id]
+                response = session.put(indication_url, json=payload, headers=headers, timeout=120)
+
+                if response.status_code == 200:
+                    # self.insert(user, cpf, name, commission_value, "Pago", "Pago via ID")
+                    print(f"[ID]Indicação {id} paga!")
+                    succes_ids.append(id)
+                else:
+                    print(f"[ID]Erro ao pagar a indicação {id}: {response.text}")
+                    reason = response.text
+                    failed_ids[id] = reason
+
+            except requests.exceptions.RequestException as e:
+                reason = "Erro de conexão"
+                print(f"[ID] Erro ao pagar a indicação {id}: {e}")
+                failed_ids[id] = reason
+
+        total_ids = len(ids)
+        succes_count = len(succes_ids)
+
+        if not failed_ids:
+            # SUCESSO TOTAL: Todos os IDs foram pagos.
+            self.insert(user, cpf, name, commission_value, "Pago", f"Todos os {len(ids)} IDs pagos com sucesso.")
+        
+        elif not succes_ids:
+            # FALHA TOTAL: Nenhum ID foi pago.
+            details = "; ".join([f"ID {id}: {reason}" for id, reason in failed_ids.items()])
+            self.insert(user, cpf, name, commission_value, "Não Pago", f"Falha no pagamento de todos os IDs. Detalhes: {details}")
+        
         else:
-            print(f"Erro ao pagar a indicação {id}")
-            self.insert(user, cpf, name, commission_value, "Não Pago", "Erro ao pagar proposta")
+            details = "; ".join([f"ID {id}: {reason}" for id, reason in failed_ids.items()])
+            # Cria dois registros claros para auditoria
+            self.insert(user, cpf, name, commission_value, "Pago", f"{len(succes_ids)} de {len(ids)} IDs pagos com sucesso.")
+            self.insert(user, cpf, name, 0, "Não Pago", f"Falha no pagamento de {len(failed_ids)} IDs. Detalhes: {details}")
+
+        # 3. --- GERA O RELATÓRIO DE FALHAS CORRETAMENTE ---
+        for failed_id, reason in failed_ids.items():
+            report_data_failed.append({
+                "CPF": cpf,
+                "ID da Indicação": failed_id,
+                "Motivo da Falha": reason
+            })
+            
+        return report_data_failed
