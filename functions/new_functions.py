@@ -164,7 +164,7 @@ class Fatban:
             "document_number": f"{document_number}",
             "status_description": "Proposta Paga",
             "event_datetime": {
-                "$lt": f"{pay_data}T00:00:00.000+0000"
+                "$lt": f"{pay_data}T03:00:00.000+0000"
             }
         }
 
